@@ -1,0 +1,369 @@
+---
+title: "MALARIA PROJECT"  
+format: dashboard   
+author: "Okello Daniel"
+---
+
+```{python}
+# Imports
+import pandas as pd
+import numpy as np
+import country_converter as coco
+import plotly.express as px
+import itables
+```
+
+```{python}
+# Load Under five Population and select 5 year period
+
+Under5_pop = pd.read_csv("data/u5pop.csv")
+Under5_pop = Under5_pop[["country", "2002", "2003", "2004", "2005", "2006"]]
+
+# Melt to data to Long
+
+Under5_pop_long = Under5_pop.melt(
+    id_vars=["country"], var_name="year", value_name="Total_Pop"
+)
+
+# Convert country names to ISO3 codes
+
+Under5_pop_long["country_code"] = coco.convert(Under5_pop_long["country"], to="ISO3")
+
+# Load the data on Malaria cases reported
+
+Malaria_cases = pd.read_csv("data\malaria_number_of_cases_reported.csv")
+
+Malaria_cases = Malaria_cases[["country", "2002", "2003", "2004", "2005", "2006"]]
+
+# Melt to data to Long
+
+Malaria_cases_long = Malaria_cases.melt(
+    id_vars=["country"], var_name="year", value_name="Reported_cases"
+)
+
+# Convert country names to ISO3 codes
+
+Malaria_cases_long["country_code"] = coco.convert(
+    Malaria_cases_long["country"], to="ISO3"
+)
+
+# Load the data on Malaria deaths reported
+
+Malaria_deaths = pd.read_csv("data\malaria_number_of_deaths_reported.csv")
+
+Malaria_deaths = Malaria_deaths[["country", "2002", "2003", "2004", "2005", "2006"]]
+
+Malaria_deaths_long = Malaria_deaths.melt(
+    id_vars=["country"], var_name="year", value_name="Reported_deaths"
+)
+
+# Convert country names to ISO3 codes
+
+Malaria_deaths_long["country_code"] = coco.convert(
+    Malaria_deaths_long["country"], to="ISO3"
+)
+
+# Merge the two datasets i.e Malaria reported cases and Malaria reported deaths
+
+Malaria_cases_deaths = pd.merge(
+    Malaria_cases_long,
+    Malaria_deaths_long,
+    on=["country", "country_code", "year"],
+    how="left",
+)
+
+Malaria_data = pd.merge(
+    Malaria_cases_deaths,
+    Under5_pop_long,
+    on=["country", "country_code", "year"],
+    how="left",
+)
+
+# Rearrange the variables
+
+Malaria_data = Malaria_data[
+    [
+        "country",
+        "country_code",
+        "year",
+        "Reported_cases",
+        "Reported_deaths",
+        "Total_Pop",
+    ]
+]
+```
+
+```{python}
+# the Reported cases data contains symbols like "K" and "M"
+
+
+def Reported_cases(value):
+    if pd.isna(value):  # Check for NaN values
+        return None
+    value = str(value).strip()  # Convert to string and remove any extra whitespace
+    if value[-1].upper() == "K":  # Check if it ends with 'K'
+        return float(value[:-1]) * 1000  # Remove 'K' and multiply by 1,000
+    elif value[-1].upper() == "M":  # Check if it ends with 'M'
+        return float(value[:-1]) * 1000000  # Remove 'M' and multiply by 1,000,000
+    else:
+        try:
+            return float(value)  # Return as a float if no suffix
+        except ValueError:
+            return None  # If conversion fails, return None
+
+
+# Apply the function to the column
+
+Malaria_data["Reported_cases"] = Malaria_data["Reported_cases"].apply(Reported_cases)
+
+# the Reported death  data contains symbols like "K" and "M"
+
+
+def Reported_deaths(value):
+    if pd.isna(value):  # Check for NaN values
+        return None
+    value = str(value).strip()  # Convert to string and remove any extra whitespace
+    if value[-1].upper() == "K":  # Check if it ends with 'K'
+        return float(value[:-1]) * 1000  # Remove 'K' and multiply by 1,000
+    elif value[-1].upper() == "M":  # Check if it ends with 'M'
+        return float(value[:-1]) * 1000000  # Remove 'M' and multiply by 1,000,000
+    else:
+        try:
+            return float(value)  # Return as a float if no suffix
+        except ValueError:
+            return None  # If conversion fails, return None
+
+
+# Apply the function to the column
+Malaria_data["Reported_deaths"] = Malaria_data["Reported_deaths"].apply(Reported_deaths)
+
+
+def Total_Pop(value):
+    if pd.isna(value):  # Check for NaN values
+        return None
+    value = str(value).strip()  # Convert to string and remove any extra whitespace
+    if value[-1].upper() == "K":  # Check if it ends with 'K'
+        return float(value[:-1]) * 1000  # Remove 'K' and multiply by 1,000
+    elif value[-1].upper() == "M":  # Check if it ends with 'M'
+        return float(value[:-1]) * 1000000  # Remove 'M' and multiply by 1,000,000
+    else:
+        try:
+            return float(value)  # Return as a float if no suffix
+        except ValueError:
+            return None  # If conversion fails, return None
+
+
+# Apply the function to the column
+Malaria_data["Total_Pop"] = Malaria_data["Total_Pop"].apply(Reported_deaths)
+
+
+# Calculate Malaria prevalence rate and Mortality rate for the period of 2002 to 2006 among Under five children
+
+Malaria_data["Prevalence_rate"] = (
+    (Malaria_data["Reported_cases"] / Malaria_data["Total_Pop"]) * 100000
+).round(0)
+
+Malaria_data["Mortality_rate"] = (
+    (Malaria_data["Reported_deaths"] / Malaria_data["Total_Pop"]) * 100000
+).round(0)
+
+
+Malaria_data["region"] = coco.convert(Malaria_data["country"], to="continent")
+
+Malaria_data["year"] = pd.to_numeric(Malaria_data["year"])
+
+Malaria_data_2006 = Malaria_data.query("year== 2006").sort_values(
+    "Prevalence_rate", ascending=False
+)
+
+# Remove rows where Prevalence_rate is NaN
+
+Malaria_data_2006 = Malaria_data_2006.dropna(subset=["Prevalence_rate"])
+Malaria_data_2006 = Malaria_data_2006.dropna(subset=["Mortality_rate"])
+
+# Compute highest Malaria Prevalence rate
+
+highest_row = (
+    Malaria_data_2006.sort_values("Prevalence_rate", ascending=False).head(1).squeeze()
+)
+highest_malaria_prev_country = highest_row["country"]
+highest_malaria_prev_value = round(highest_row["Prevalence_rate"], 1)
+
+# Compute lowest Malaria Prevalence rate
+
+lowest_row = (
+    Malaria_data_2006.sort_values("Prevalence_rate", ascending=True).head(1).squeeze()
+)
+lowest_malaria_prev_country = lowest_row["country"]
+lowest_malaria_prev_value = round(lowest_row["Prevalence_rate"], 1)
+
+# Create the map using plotly express with a blue color scale
+
+map_fig = px.choropleth(
+    Malaria_data_2006,
+    locations="country_code",
+    color="Prevalence_rate",
+    hover_name="country",
+    title="Map of Countries by Prevalence rates among under 5 children",
+    color_continuous_scale="Blues",
+).update_layout(coloraxis_showscale=False)
+
+# Largest 20 countries by Life Expectancy (bar chart) with a blue color scale
+top_20 = Malaria_data_2006.nlargest(20, "Total_Pop").sort_values(
+    "Prevalence_rate", ascending=True
+)
+bar_fig = px.bar(
+    top_20,
+    x="Prevalence_rate",
+    y="country",
+    title="Prevalence rates in 20 Largest Countries",
+    color="Prevalence_rate",
+    color_continuous_scale="Blues",
+).update_layout(coloraxis_showscale=False)
+```
+
+# MALARIA PREVALENCE RATE
+
+## Row 1 {height=30%}
+
+::: {.valuebox icon="heart-pulse" color="#1E90FF" title="Highest Malaria Prevalence Rate"}
+
+`{python} str(highest_malaria_prev_value)`
+
+`{python} highest_malaria_prev_country`
+
+:::
+::: {.valuebox icon="thermometer" color="#87CEFA" title="Lowest Malaria Prevalence Rate"} 
+
+`{python} str(lowest_malaria_prev_value)`
+
+`{python} lowest_malaria_prev_country`
+
+:::
+## Row 2 {height=60%}
+
+### {width=70%}
+
+```{python}
+map_fig
+```
+
+### {width=40%}
+
+```{python}
+bar_fig
+```
+
+```{python}
+# Largest 20 countries by Life Expectancy (bar chart) with a blue color scale
+top_20 = Malaria_data_2006.nlargest(20, "Total_Pop").sort_values("Prevalence_rate", ascending=True)
+bar_fig = px.bar(
+    top_20,
+    x="Prevalence_rate",
+    y="country",
+    title="Prevalence rates in 20 Largest Countries",
+    color="Prevalence_rate",
+    color_continuous_scale="Blues",
+).update_layout(coloraxis_showscale=False)
+```
+
+# MALARIA MORTALITY RATE
+
+## Row 1 {height=30%}
+
+```{python}
+# Create regional summary
+reg_sum = (
+    Malaria_data_2006.groupby("region")
+    .apply(
+        lambda g: pd.Series(
+            {
+                
+                "Lowest Mortality Rate": g["Mortality_rate"].min(),
+                "Country with Lowest Mortality Rate": g.loc[g["Mortality_rate"].idxmin(), "country"],
+                "Highest  Mortality Rate": g["Mortality_rate"].max(),
+                "Country with Highest Mortality Rate": g.loc[
+                    g["Mortality_rate"].idxmax(), "country"
+                ],
+            }
+        )
+    )
+    .round(2)
+)
+
+itables.show(reg_sum)
+```
+
+## Row 2 {height=70%}
+
+### Column {width="80%"}
+
+```{python}
+Malaria_data_2006_sorted = Malaria_data_2006.sort_values(by="Mortality_rate", ascending=False)
+
+# Create the bar chart
+continent_fig = px.histogram(
+    Malaria_data_2006_sorted,
+    y="region",
+    x="Mortality_rate",
+        title="Malaria Mortality Rate among under Five Population by Region ",
+        text_auto=True
+
+).update_layout(
+    showlegend=False,  # Remove legend
+    xaxis_title= "Mortality Rate (per 100000 population)",  # Fix x-axis title
+    yaxis_title="Regions"  # Fix y-axis title
+)
+
+# Show the figure
+continent_fig.show()
+
+```
+### Column {width="20%"}
+
+Malaria mortality rates among children under five highlight stark disparities between continents. Africa reports an alarmingly high rate of 4,513 deaths per 100,000, underscoring significant health challenges faced by this vulnerable population. In contrast, Oceania, Asia, and the Americas show much lower ratesâ€”106, 79, and 36 deaths per 100,000 respectivelyâ€”indicating notable progress in health and environmental conditions in these regions.
+
+# RELATIONSHIP
+
+## Row 1 {height=30%}
+
+```{python}
+Malaria_data_all = Malaria_data.dropna(subset=["Prevalence_rate"])
+
+Malaria_data_all = Malaria_data.dropna(subset=["Mortality_rate"])
+
+fig = px.scatter(
+    Malaria_data_all, 
+    x="Prevalence_rate", 
+    y="Mortality_rate", 
+    size="Total_Pop",  # Bubble size (e.g., population)
+    color="region",  # Color by region
+    title="Prevalence Rate vs Mortality Rate (Animated Bubble Chart)",
+    hover_data=["country"],  # Add hover info
+    animation_frame="year",  # Animate over the "Year" column
+    animation_group="country",  # Group bubbles by country
+    size_max=60  # Set a maximum bubble size for better visualization
+).update_layout(
+    showlegend=False,  # Remove legend
+    xaxis_title="Prevalence_rate(per 100000 Population)",  # Fix x-axis title
+    yaxis_title="Mortality Rate (per 100000 population)"  # Fix y-axis title
+)
+
+fig.show()
+
+```
+# DATA DOWNLOAD
+
+```{python}
+# Display full dataset with itables
+itables.show(Malaria_data_all, caption="Gapminder Dataset (2002-2006)", buttons=["csvHtml5"])
+```
+
+# ABOUT
+
+This data comes from the python `plotly.express` libraryâ€™s `gapminder` dataset, which is originally sourced from the Gapminder Foundation.
+
+The Gapminder Foundation is a non-profit venture that promotes sustainable global development and achievement of the United Nations Millennium Development Goals by increasing use and understanding of statistics and other information about social, economic, and environmental development.
+
+
+
